@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "dev": "ts-node-dev --respawn src/index.ts"
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "start": "ts-node-dev src/index.ts"
   },
   "dependencies": {
     "@types/ws": "^8.5.10",
