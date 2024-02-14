@@ -25,34 +25,42 @@ wss.on('connection', ws => {
 
   const numberOfClients = wss.clients.size
 
-  ws.on('error', err => {
-    console.error(err)
-    names.delete(username)
-    ws.terminate()
-  })
-
-  const interval = setInterval(() => {
+  const keepAliveInterval = setInterval(() => {
     // Send the ping as early as possible since we will be waiting for the "pong"
     ws.ping()
 
     // Disconnect user and cleanup
     if (!isAlive) {
-      const leaveMessage = `${username} has left! ${numberOfClients} ${
-        numberOfClients === 1 ? 'User' : 'Users'
-      } Online.`
-
-      names.delete(username)
-
-      console.log(leaveMessage)
-      broadcast(wss, leaveMessage)
-
-      ws.terminate()
-      clearInterval(interval)
+      cleanup()
     }
 
     // Assume the connection isn't alive, this should be overwritten by the "pong"
     isAlive = false
   }, KEEP_ALIVE_TIME)
+
+  function cleanup() {
+    const leaveMessage = `${username} has left! ${numberOfClients} ${
+      numberOfClients === 1 ? 'User' : 'Users'
+    } Online.`
+
+    names.delete(username)
+
+    console.log(leaveMessage)
+    broadcast(wss, leaveMessage)
+
+    clearInterval(keepAliveInterval)
+
+    ws.terminate()
+  }
+
+  ws.on('error', err => {
+    console.error(err)
+    cleanup()
+  })
+
+  ws.on('close', () => {
+    cleanup()
+  })
 
   ws.on('pong', () => {
     isAlive = true
@@ -78,11 +86,6 @@ wss.on('connection', ws => {
 
         return
       }
-
-      ws.on('close', () => {
-        isAlive = false
-        console.log(`${username} has disconnected!`)
-      })
 
       broadcast(wss, `${username}: ${sData}`, { includeSelf: false, ws })
       ws.send(`${username} (You): ${sData}`)
