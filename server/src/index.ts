@@ -1,7 +1,9 @@
-import { WebSocketServer } from 'ws'
 import { broadcast, setUsername } from './utils'
 
+import { WebSocketServer } from 'ws'
+
 const PORT = 3000
+const KEEP_ALIVE_TIME = 5000 // in ms
 const DEFAULT_USERNAME = 'Anonymous'
 export const USERNAME_REGEX = /^username:([a-zA-Z0-9]+)?$/
 
@@ -14,9 +16,34 @@ wss.on('listening', () => {
 
 wss.on('connection', ws => {
   let username = DEFAULT_USERNAME
-  console.log('Connected to client')
+  let isAlive = true
+
+  const numberOfClients = wss.clients.size
 
   ws.on('error', console.error)
+
+  const interval = setInterval(() => {
+    ws.ping()
+
+    if (!isAlive) {
+      const leaveMessage = `${username} has left! ${numberOfClients} ${
+        numberOfClients === 1 ? 'User' : 'Users'
+      } Online.`
+
+      names.delete(username)
+
+      console.log(leaveMessage)
+      broadcast(wss, leaveMessage)
+
+      ws.terminate()
+      clearInterval(interval)
+    }
+    isAlive = false
+  }, KEEP_ALIVE_TIME)
+
+  ws.on('pong', () => {
+    isAlive = true
+  })
 
   ws.on('message', data => {
     console.log(`Received ${data} from ${username}`)
@@ -30,6 +57,7 @@ wss.on('connection', ws => {
 
       if (newUsername) {
         broadcast(wss, `${username} has changed their username to ${newUsername}.`)
+        names.delete(username)
         username = newUsername
       }
 
@@ -40,17 +68,15 @@ wss.on('connection', ws => {
       console.log(`${username} has disconnected!`)
     })
 
-    ws.on('ping', () => {
-      console.log('ping')
-    })
-
     broadcast(wss, `${username}: ${sterilizedData}`, { includeSelf: false, ws })
+    ws.send(`${username} (You): ${sterilizedData}`)
   })
 
-  const numberOfClients = wss.clients.size
+  const joinMessage = `${username} has joined! ${numberOfClients} ${
+    numberOfClients === 1 ? 'User' : 'Users'
+  } Online.`
 
-  broadcast(
-    wss,
-    `${username} has joined! ${numberOfClients} ${numberOfClients === 1 ? 'User' : 'Users'} Online.`
-  )
+  console.log(joinMessage)
+
+  broadcast(wss, joinMessage)
 })

@@ -5,9 +5,10 @@ string webSocketUri = "ws://localhost:3000";
 
 using (var client = new ClientWebSocket())
 {
-    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+    client.Options.KeepAliveInterval = TimeSpan.Zero; // Disable client's built-in KeepAlive
 
     await client.ConnectAsync(new Uri(webSocketUri), CancellationToken.None);
+
 
 
     // Start a continuous receive loop in a separate task
@@ -19,7 +20,6 @@ using (var client = new ClientWebSocket())
            var result = await client.ReceiveAsync(
                new ArraySegment<byte>(receiveBuffer), CancellationToken.None);
 
-           Console.WriteLine(result.MessageType);
            if (result.MessageType == WebSocketMessageType.Close)
            {
                Console.WriteLine("Server closed the connection");
