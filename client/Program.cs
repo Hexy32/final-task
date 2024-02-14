@@ -9,7 +9,7 @@ using (var client = new ClientWebSocket())
 
     await client.ConnectAsync(new Uri(webSocketUri), CancellationToken.None);
 
-
+    // --- Receiving from server ---
 
     // Start a continuous receive loop in a separate task
     _ = Task.Run(async () =>
@@ -17,23 +17,33 @@ using (var client = new ClientWebSocket())
        var receiveBuffer = new byte[1024];
        while (client.State == WebSocketState.Open)
        {
-           var result = await client.ReceiveAsync(
-               new ArraySegment<byte>(receiveBuffer), CancellationToken.None);
+           try
+           {
 
-           if (result.MessageType == WebSocketMessageType.Close)
-           {
-               Console.WriteLine("Server closed the connection");
-               break;
+               var result = await client.ReceiveAsync(
+                   new ArraySegment<byte>(receiveBuffer), CancellationToken.None);
+
+               if (result.MessageType == WebSocketMessageType.Close)
+               {
+                   Console.WriteLine("Server closed the connection");
+                   break;
+               }
+               else if (result.MessageType == WebSocketMessageType.Text)
+               {
+                   var message = Encoding.UTF8.GetString(receiveBuffer, 0, result.Count);
+                   Console.WriteLine(message);
+               }
            }
-           else if (result.MessageType == WebSocketMessageType.Text)
+           catch (WebSocketException ex)
            {
-               var message = Encoding.UTF8.GetString(receiveBuffer, 0, result.Count);
-               Console.WriteLine(message);
+               Console.WriteLine($"WebSocket Error: {ex.Message}");
+               Environment.Exit(1);
            }
        }
    });
 
-    // Keep console alive
+    // --- Sending to server ---
+
     Console.WriteLine("Press Enter to send a message, type 'username:{new_username}` to change usernames, or type 'exit' to quit.");
     string? input;
 

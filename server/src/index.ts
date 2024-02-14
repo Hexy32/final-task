@@ -1,13 +1,18 @@
-import { broadcast, setUsername } from './utils'
+import { broadcast, createUsername } from './utils'
 
 import { WebSocketServer } from 'ws'
+
+// --- Config ---
 
 const PORT = 3000
 const KEEP_ALIVE_TIME = 5000 // in ms
 const DEFAULT_USERNAME = 'Anonymous'
 export const USERNAME_REGEX = /^username:([a-zA-Z0-9]+)?$/
 
+// --- Create Socket ---
+
 const wss = new WebSocketServer({ port: PORT })
+// This is to ensure there are no repeat usernames
 export const names = new Set()
 
 wss.on('listening', () => {
@@ -20,11 +25,17 @@ wss.on('connection', ws => {
 
   const numberOfClients = wss.clients.size
 
-  ws.on('error', console.error)
+  ws.on('error', err => {
+    console.error(err)
+    names.delete(username)
+    ws.terminate()
+  })
 
   const interval = setInterval(() => {
+    // Send the ping as early as possible since we will be waiting for the "pong"
     ws.ping()
 
+    // Disconnect user and cleanup
     if (!isAlive) {
       const leaveMessage = `${username} has left! ${numberOfClients} ${
         numberOfClients === 1 ? 'User' : 'Users'
@@ -38,6 +49,8 @@ wss.on('connection', ws => {
       ws.terminate()
       clearInterval(interval)
     }
+
+    // Assume the connection isn't alive, this should be overwritten by the "pong"
     isAlive = false
   }, KEEP_ALIVE_TIME)
 
@@ -45,31 +58,38 @@ wss.on('connection', ws => {
     isAlive = true
   })
 
+  // I chose to use guard clauses to keep from doing excessive nesting
   ws.on('message', data => {
-    console.log(`Received ${data} from ${username}`)
+    try {
+      console.log(`Received ${data} from ${username}`)
 
-    const sterilizedData = data.toString()
+      const sData = data.toString()
 
-    if (sterilizedData.trim() === '') return
+      if (sData.trim() === '') return
 
-    if (sterilizedData.startsWith('username:')) {
-      const newUsername = setUsername(ws, sterilizedData)
+      if (sData.startsWith('username:')) {
+        const newUsername = createUsername(ws, sData)
 
-      if (newUsername) {
-        broadcast(wss, `${username} has changed their username to ${newUsername}.`)
-        names.delete(username)
-        username = newUsername
+        if (newUsername) {
+          broadcast(wss, `${username} has changed their username to ${newUsername}.`)
+          names.delete(username)
+          username = newUsername
+        }
+
+        return
       }
 
-      return
+      ws.on('close', () => {
+        isAlive = false
+        console.log(`${username} has disconnected!`)
+      })
+
+      broadcast(wss, `${username}: ${sData}`, { includeSelf: false, ws })
+      ws.send(`${username} (You): ${sData}`)
+    } catch (err) {
+      console.error(err)
+      ws.send('An error occurred on the server. Please try again.')
     }
-
-    ws.on('close', () => {
-      console.log(`${username} has disconnected!`)
-    })
-
-    broadcast(wss, `${username}: ${sterilizedData}`, { includeSelf: false, ws })
-    ws.send(`${username} (You): ${sterilizedData}`)
   })
 
   const joinMessage = `${username} has joined! ${numberOfClients} ${
@@ -77,6 +97,5 @@ wss.on('connection', ws => {
   } Online.`
 
   console.log(joinMessage)
-
   broadcast(wss, joinMessage)
 })
